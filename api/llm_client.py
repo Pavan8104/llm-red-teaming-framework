@@ -1,6 +1,6 @@
-# llm_client.py — openai api wrapper
+# api/llm_client.py — OpenAI API wrapper
 # handles retries, rate limits, and basic error categorization
-# v2: better error messages, token count logging, context length handling
+# v2: better error messages, token logging, context length handling
 
 import os
 import time
@@ -9,6 +9,7 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
+# singleton client — ek hi baar banao, baar baar nahi
 _client = None
 
 DEFAULT_SYSTEM_PROMPT = (
@@ -18,6 +19,8 @@ DEFAULT_SYSTEM_PROMPT = (
 
 
 def _get_client():
+    # lazy initialization — pehli call pe hi banao client
+    # global isliye kyunki ek hi instance hona chahiye
     global _client
     if _client is None:
         key = os.getenv("OPENAI_API_KEY", "")
@@ -30,10 +33,8 @@ def _get_client():
 
 
 def ping(model: str = "gpt-4o-mini") -> bool:
-    """
-    send a trivial request to verify the api key works before a full run
-    faster to fail here than halfway through a 20-prompt batch
-    """
+    # full run se pehle ek chhota sa request bhejo API key check ke liye
+    # fail fast — 20 prompts ke baad fail hone se behtar hai pehle hi pata chale
     try:
         resp = _get_client().chat.completions.create(
             model=model,
@@ -54,29 +55,28 @@ def send_prompt(
     max_tokens: int = 512,
     system_prompt: str = DEFAULT_SYSTEM_PROMPT,
 ) -> str | None:
-    """
-    send one prompt and return response text, or None on failure
-    retries up to 3x with exponential backoff on rate limits
-    """
+    # ek prompt bhejo aur response text wapas lo
+    # rate limits pe exponential backoff ke saath 3 baar try karta hai
+    # None return karta hai agar sab attempts fail ho jayein
     char_count = len(prompt_text)
     print(f"\n[LLM] → sending to {model} | {char_count} chars")
 
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": prompt_text},
+        {"role": "user",   "content": prompt_text},
     ]
 
     for attempt in range(3):
         try:
-            t0 = time.time()
+            t0   = time.time()
             resp = _get_client().chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
             )
-            elapsed = round(time.time() - t0, 2)
-            text = resp.choices[0].message.content
+            elapsed     = round(time.time() - t0, 2)
+            text        = resp.choices[0].message.content
             tokens_used = getattr(resp.usage, "total_tokens", "?")
             print(f"[LLM] ← {elapsed}s | {len(text)} chars | {tokens_used} tokens | model={resp.model}")
             logger.debug(f"Response snippet: {text[:120]!r}")
@@ -84,19 +84,28 @@ def send_prompt(
 
         except Exception as e:
             err_str = str(e)
+
             if "rate_limit" in err_str.lower() or "429" in err_str:
+                # rate limited — thoda ruko aur try karo dobara
                 wait = 2 ** attempt
                 print(f"[LLM] Rate limited — sleeping {wait}s (attempt {attempt + 1}/3)")
                 time.sleep(wait)
+
             elif "invalid_api_key" in err_str.lower() or "401" in err_str:
+                # galat API key — retry ka koi fayda nahi
                 print(f"[LLM] ✗ Auth error — check OPENAI_API_KEY")
                 return None
+
             elif "content_policy" in err_str.lower():
+                # OpenAI ne khud rok diya prompt ko
                 print(f"[LLM] Content policy refusal at API level")
                 return "[API_REFUSED]"
+
             elif "context_length" in err_str.lower() or "413" in err_str:
+                # prompt bahut lamba hai — truncate karke bhejo
                 print(f"[LLM] Prompt too long ({char_count} chars) — try shorter input")
                 return None
+
             else:
                 print(f"[LLM] Error attempt {attempt + 1}/3: {type(e).__name__}: {e}")
                 if attempt == 2:

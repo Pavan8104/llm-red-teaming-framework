@@ -1,7 +1,6 @@
-# utils/hashing.py
-# Prompt deduplication via content hashing.
-# Prevents running the same prompt twice in a single experiment,
-# which skews metrics and wastes API quota.
+# utils/hashing.py — prompt deduplication via content hashing
+# ek hi prompt do baar run karna metrics skew karta hai aur API quota waste hoti hai
+# SHA-256 digest use karta hai — consistent aur fast
 
 import hashlib
 import logging
@@ -10,26 +9,21 @@ logger = logging.getLogger(__name__)
 
 
 def hash_prompt(text: str) -> str:
-    """
-    Return a short SHA-256 hex digest of the prompt text.
-    Used as a stable identifier for dedup and caching.
-    """
+    # prompt ka short SHA-256 hex digest return karo
+    # dedup aur caching ke liye stable identifier ke taur pe use hota hai
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def deduplicate_prompts(prompts: list[tuple]) -> list[tuple]:
-    """
-    Remove duplicate prompts from a list of (text, category, severity) tuples.
-    Keeps first occurrence, drops subsequent ones.
-
-    Returns the deduplicated list and logs how many were dropped.
-    """
+    # (text, category, severity) tuples ki list se duplicates remove karo
+    # pehla occurrence rakhta hai, baad wale drop karta hai
+    # deduplicated list return karta hai aur log karta hai kitne drop hue
     seen: set[str] = set()
-    unique = []
+    unique  = []
     dropped = 0
 
     for prompt_tuple in prompts:
-        text = prompt_tuple[0]
+        text   = prompt_tuple[0]
         digest = hash_prompt(text)
         if digest not in seen:
             seen.add(digest)
@@ -45,17 +39,15 @@ def deduplicate_prompts(prompts: list[tuple]) -> list[tuple]:
 
 
 def build_seen_set(previous_results: list[dict]) -> set[str]:
-    """
-    Build a set of prompt hashes from a previous run's results.
-    Use this to skip prompts that were already tested.
-    """
+    # pehle wale run ke results se prompt hashes ka set banao
+    # yeh use karo taaki pehle se tested prompts skip ho sakein
     return {hash_prompt(r["prompt"]) for r in previous_results if r.get("prompt")}
 
 
 def filter_seen(prompts: list[tuple], seen: set[str]) -> list[tuple]:
-    """Remove prompts whose hash appears in the `seen` set."""
+    # seen set mein jo hain unhe remove karo
     filtered = [p for p in prompts if hash_prompt(p[0]) not in seen]
-    skipped = len(prompts) - len(filtered)
+    skipped  = len(prompts) - len(filtered)
     if skipped:
         logger.info(f"Skipped {skipped} previously-tested prompt(s).")
     return filtered

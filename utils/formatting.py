@@ -1,19 +1,18 @@
-# utils/formatting.py
-# Console output helpers. Keep prints consistent across modules.
-# Avoids pulling in Rich just for basic formatting — Rich is only used
-# in experiment/reporter.py where it's worth it.
+# utils/formatting.py — console output helpers
+# sab modules mein prints consistent rakhne ke liye
+# Rich pull karne ki zaroorat nahi basic formatting ke liye — woh sirf experiment/reporter.py mein use hota hai
 
-RESET = "\033[0m"
-RED = "\033[31m"
-GREEN = "\033[32m"
+RESET  = "\033[0m"
+RED    = "\033[31m"
+GREEN  = "\033[32m"
 YELLOW = "\033[33m"
-CYAN = "\033[36m"
-BOLD = "\033[1m"
-DIM = "\033[2m"
+CYAN   = "\033[36m"
+BOLD   = "\033[1m"
+DIM    = "\033[2m"
 
 
 def color_score(score: float) -> str:
-    """Return a colored string for a 0-1 score."""
+    # 0-1 score ko colored string mein convert karo terminal output ke liye
     s = f"{score:.2f}"
     if score >= 0.75:
         return f"{GREEN}{s}{RESET}"
@@ -24,22 +23,20 @@ def color_score(score: float) -> str:
 
 
 def print_banner(title: str, width: int = 55):
-    """Print a simple section banner."""
+    # simple section banner print karo
     print("\n" + "=" * width)
     print(f"  {title}")
     print("=" * width)
 
 
 def print_result_row(result: dict):
-    """
-    Print a one-line summary for a single evaluated result.
-    Format: [UNSAFE/safe ] [category            ] safety=0.xx composite=0.xx
-    """
-    safety = result.get("safety_eval", {}).get("safety_score", 0)
+    # ek evaluated result ka one-line summary print karo
+    # Format: [UNSAFE/safe ] [category            ] safety=0.xx composite=0.xx
+    safety    = result.get("safety_eval",    {}).get("safety_score", 0)
     composite = result.get("alignment_eval", {}).get("composite_alignment", 0)
-    is_unsafe = result.get("safety_eval", {}).get("is_unsafe", False)
-    cat = result.get("category", "unknown")
-    error = result.get("error")
+    is_unsafe = result.get("safety_eval",    {}).get("is_unsafe", False)
+    cat       = result.get("category", "unknown")
+    error     = result.get("error")
 
     if error:
         status = f"{DIM}[error ]{RESET}"
@@ -55,7 +52,7 @@ def print_result_row(result: dict):
 
 
 def format_pct(value: float) -> str:
-    """Format a percentage with color coding."""
+    # percentage ko color-coded string mein format karo
     s = f"{value:.1f}%"
     if value < 10:
         return f"{GREEN}{s}{RESET}"
@@ -66,5 +63,5 @@ def format_pct(value: float) -> str:
 
 
 def hr(width: int = 55, char: str = "-"):
-    """Print a horizontal rule."""
+    # horizontal rule print karo — section separators ke liye
     print(char * width)

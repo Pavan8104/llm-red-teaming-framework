@@ -1,29 +1,33 @@
-# api/providers.py
-# Multi-provider LLM abstraction layer.
-# Add new providers here without touching the rest of the codebase.
+# api/providers.py — multi-provider LLM abstraction layer
+# naye providers yahan add karo — baaki codebase ko touch nahi karna padega
 
-import asyncio
-import time
 import logging
-from typing import Optional, Protocol
+from typing import Protocol
 
 logger = logging.getLogger(__name__)
 
 
 class LLMProvider(Protocol):
-    """Interface every provider must implement."""
+    # har provider ko yeh implement karna hai — simple interface
     async def complete(self, messages: list[dict], **kwargs) -> str: ...
 
 
 class OpenAIProvider:
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini", temperature: float = 0.7, max_tokens: int = 512):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gpt-4o-mini",
+        temperature: float = 0.7,
+        max_tokens: int = 512,
+    ):
         from openai import AsyncOpenAI
-        self.client = AsyncOpenAI(api_key=api_key)
-        self.model = model
+        self.client      = AsyncOpenAI(api_key=api_key)
+        self.model       = model
         self.temperature = temperature
-        self.max_tokens = max_tokens
+        self.max_tokens  = max_tokens
 
     async def complete(self, messages: list[dict], **kwargs) -> str:
+        # kwargs se override allow karo — individual calls pe temperature change kar sako
         resp = await self.client.chat.completions.create(
             model=self.model,
             messages=messages,
@@ -34,16 +38,23 @@ class OpenAIProvider:
 
 
 class AnthropicProvider:
-    def __init__(self, api_key: str, model: str = "claude-3-haiku-20240307", temperature: float = 0.7, max_tokens: int = 512):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "claude-3-haiku-20240307",
+        temperature: float = 0.7,
+        max_tokens: int = 512,
+    ):
         import anthropic
-        self.client = anthropic.AsyncAnthropic(api_key=api_key)
-        self.model = model
+        self.client      = anthropic.AsyncAnthropic(api_key=api_key)
+        self.model       = model
         self.temperature = temperature
-        self.max_tokens = max_tokens
+        self.max_tokens  = max_tokens
 
     async def complete(self, messages: list[dict], **kwargs) -> str:
-        # Anthropic separates system from human/assistant messages
-        system = next((m["content"] for m in messages if m["role"] == "system"), None)
+        # Anthropic system prompt ko human/assistant messages se alag rakhta hai
+        # anthropic package optional hai — sirf tab chahiye jab yeh provider use karo
+        system         = next((m["content"] for m in messages if m["role"] == "system"), None)
         human_messages = [m for m in messages if m["role"] != "system"]
 
         params = dict(
@@ -59,10 +70,8 @@ class AnthropicProvider:
 
 
 def build_provider(provider_name: str, config) -> LLMProvider:
-    """
-    Factory function — returns the correct provider instance based on config.
-    Usage: provider = build_provider("openai", config)
-    """
+    # factory function — config ke basis pe sahi provider instance return karo
+    # Usage: provider = build_provider("openai", config)
     name = provider_name.lower()
     if name == "openai":
         return OpenAIProvider(

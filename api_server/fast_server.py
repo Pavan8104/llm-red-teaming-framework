@@ -1,3 +1,7 @@
+# api_server/fast_server.py — FastAPI backend for the React frontend
+# safety pipeline ko REST endpoints ke through expose karta hai
+# React app is se /api/evaluate pe POST request karta hai
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -6,6 +10,7 @@ from typing import Optional
 import sys
 import os
 
+# project root add karo taaki sibling modules import ho sakein
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from evaluation.scorer import score_response
@@ -17,6 +22,7 @@ from attacks.prompt_generator import generate_batch
 
 app = FastAPI(title="Sentinel AI Engine API")
 
+# CORS khol do — React dev server alag port pe hota hai
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -27,29 +33,29 @@ app.add_middleware(
 
 
 class EvaluateRequest(BaseModel):
-    prompt: str
+    prompt:   str
     response: str
 
 
 @app.get("/api/health")
 def health_check():
+    # simple liveness check — load balancer ya frontend se use karo
     return {"status": "ok"}
 
 
 @app.post("/api/evaluate")
 def evaluate_interaction(req: EvaluateRequest):
+    # prompt aur response dono score karo independently
+    # worst-case wins: dono mein se koi bhi unsafe ho to final verdict UNSAFE hoga
     try:
-        # ── Score both prompt and response independently ──────────────────────
-        prompt_safety  = score_response(req.prompt,   source="prompt")
+        prompt_safety   = score_response(req.prompt,   source="prompt")
         response_safety = score_response(req.response, source="response")
 
-        # ── Worst-case wins: either unsafe → final verdict is UNSAFE ─────────
         is_unsafe    = prompt_safety["is_unsafe"] or response_safety["is_unsafe"]
         safety_score = min(prompt_safety["safety_score"], response_safety["safety_score"])
 
-        # Build the combined safety result returned to the frontend.
-        # If the prompt triggered the override, surface its reason; otherwise
-        # use the response result as primary (it has the most detail).
+        # combined safety result banao frontend ke liye
+        # agar prompt ne override kiya aur response safe tha to prompt ka reason dikhao
         if prompt_safety["is_unsafe"] and not response_safety["is_unsafe"]:
             primary_safety = prompt_safety
         else:
@@ -57,10 +63,10 @@ def evaluate_interaction(req: EvaluateRequest):
 
         safety_result = {
             **primary_safety,
-            # always reflect the combined worst-case values
-            "is_unsafe":    is_unsafe,
-            "safety_score": safety_score,
-            # include both individual verdicts for transparency
+            # combined worst-case values hamesha reflect karo
+            "is_unsafe":       is_unsafe,
+            "safety_score":    safety_score,
+            # transparency ke liye dono individual verdicts include karo
             "prompt_safety":   prompt_safety,
             "response_safety": response_safety,
         }
@@ -70,13 +76,13 @@ def evaluate_interaction(req: EvaluateRequest):
         defense_result   = filter_response(req.response, block_mode=False)
 
         return {
-            "prompt":      req.prompt,
-            "response":    req.response,
-            "safety":      safety_result,
-            "alignment":   alignment_result,
+            "prompt":       req.prompt,
+            "response":     req.response,
+            "safety":       safety_result,
+            "alignment":    alignment_result,
             "truthfulness": truth_result,
-            "defense":     defense_result,
-            "is_unsafe":   is_unsafe,
+            "defense":      defense_result,
+            "is_unsafe":    is_unsafe,
             "safety_score": safety_score,
         }
 
@@ -86,11 +92,13 @@ def evaluate_interaction(req: EvaluateRequest):
 
 @app.get("/api/prompts/library")
 def get_prompt_library():
+    # poori attack library return karo — frontend mein browse ke liye
     return {"prompts": ATTACK_PROMPTS}
 
 
 @app.get("/api/prompts/generate")
 def generate_prompts(n: int = 5, attack_type: Optional[str] = None):
+    # dynamic prompts generate karo — frontend generator tab ke liye
     try:
         prompts = generate_batch(n=n, attack_type=attack_type)
         return {"prompts": prompts}

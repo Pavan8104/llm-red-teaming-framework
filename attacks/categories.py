@@ -1,71 +1,69 @@
-# attacks/categories.py
-# Extended attack category definitions for Sentinel AI.
-# Each category targets a distinct alignment or safety failure mode.
+# attacks/categories.py — attack category taxonomy for Sentinel AI
+# har category ek distinct alignment ya safety failure mode target karti hai
 
 from enum import Enum
 
 
 class AttackCategory(str, Enum):
     """
-    Taxonomy of adversarial attack types used in red-teaming runs.
-
-    Categories are roughly ordered from most to least common in the wild.
-    Add new categories here and update ATTACK_PROMPTS in prompt_generator.py.
+    Adversarial attack types ka taxonomy jo red-teaming runs mein use hota hai.
+    Categories roughly most-to-least common in the wild order mein hain.
+    Naye categories yahan add karo aur prompt_generator.py mein ATTACK_PROMPTS update karo.
     """
 
-    # ── Core Jailbreaks ───────────────────────────────────────────
+    # ── Core Jailbreaks ───────────────────────────────────────────────
     JAILBREAK = "jailbreak"
-    """Attempts to make the model ignore its alignment training entirely."""
+    # model ke alignment training ko poori tarah se ignore karwane ki koshish
 
     ROLE_MANIPULATION = "role_manipulation"
-    """Assigns the model a persona that conflicts with its safety guidelines."""
+    # model ko aisi persona assign karna jo uske safety guidelines se conflict kare
 
-    # ── Injection Attacks ─────────────────────────────────────────
+    # ── Injection Attacks ─────────────────────────────────────────────
     PROMPT_INJECTION = "prompt_injection"
-    """Embeds rogue instructions inside data the model is asked to process."""
+    # jo data model process kar raha hai uske andar rogue instructions embed karna
 
     CONTEXT_HIJACKING = "context_hijacking"
-    """Manipulates conversation context to change the model's behavior mid-session."""
+    # conversation context manipulate karna taaki model ka behavior mid-session badal jaye
 
-    # ── Direct Harm Requests ──────────────────────────────────────
+    # ── Direct Harm Requests ──────────────────────────────────────────
     HARMFUL_QUERY = "harmful_query"
-    """Straightforward requests for information that could enable harm."""
+    # seedha request for information jo harm enable kar sakti hai
 
     SOCIAL_ENGINEERING = "social_engineering"
-    """Psychological manipulation tactics designed to extract harmful outputs."""
+    # psychological manipulation tactics — harmful outputs extract karne ke liye
 
-    # ── Information Extraction ────────────────────────────────────
+    # ── Information Extraction ────────────────────────────────────────
     DATA_EXTRACTION = "data_extraction"
-    """Probes for system prompt leakage, training data, or PII."""
+    # system prompt leakage, training data, ya PII ke liye probe karna
 
     SYSTEM_PROMPT_LEAK = "system_prompt_leak"
-    """Specifically targets exposure of the model's system/instruction prompt."""
+    # specifically model ke system/instruction prompt exposure target karna
 
-    # ── Logic & Reasoning Attacks ─────────────────────────────────
+    # ── Logic & Reasoning Attacks ─────────────────────────────────────
     LOGIC_BYPASS = "logic_bypass"
-    """Uses logical/philosophical framing to justify harmful outputs."""
+    # logical/philosophical framing use karke harmful outputs justify karna
 
     MULTI_TURN = "multi_turn"
-    """Slowly escalates across multiple turns to reach a harmful output."""
+    # multiple turns mein slowly escalate karke harmful output tak pahunchna
 
-    # ── Bias & Fairness ───────────────────────────────────────────
+    # ── Bias & Fairness ───────────────────────────────────────────────
     BIAS_ELICITATION = "bias_elicitation"
-    """Attempts to surface political, social, or demographic bias."""
+    # political, social, ya demographic bias surface karne ki koshish
 
     MISINFORMATION = "misinformation"
-    """Tries to get the model to confidently assert false claims."""
+    # model se confidently false claims assert karwane ki koshish
 
-    # ── Robustness ────────────────────────────────────────────────
+    # ── Robustness ────────────────────────────────────────────────────
     OBFUSCATION = "obfuscation"
-    """Uses encodings, typos, or unusual formatting to evade filters."""
+    # encodings, typos, ya unusual formatting se filters evade karna
 
     LANGUAGE_SWITCH = "language_switch"
-    """Switches languages mid-prompt to bypass English-centric safety filters."""
+    # English-centric safety filters bypass karne ke liye mid-prompt language switch karna
 
 
-# Severity levels as constants for readability
-LOW = 1
+# severity levels as readable constants
+LOW    = 1
 MEDIUM = 2
-HIGH = 3
+HIGH   = 3
 
 SEVERITY_LABELS = {LOW: "low", MEDIUM: "medium", HIGH: "high"}
