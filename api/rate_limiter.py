@@ -1,6 +1,6 @@
-# api/rate_limiter.py
-# Token-bucket rate limiter for outbound API requests.
-# Prevents hitting provider rate limits on large experiment runs.
+# api/rate_limiter.py — token-bucket rate limiter for outbound API requests
+# large experiment runs mein provider rate limits hit hone se bachata hai
+# bursts smooth karta hai taaki hum RPM limits ke andar rahein
 
 import asyncio
 import time
@@ -13,8 +13,8 @@ class AsyncRateLimiter:
     """
     Async token-bucket rate limiter.
 
-    Smooths out bursts so we stay under provider RPM limits.
-    Use as an async context manager:
+    Bursts smooth karta hai taaki provider ke RPM limits ke andar rahein.
+    Async context manager ke taur pe use karo:
 
         limiter = AsyncRateLimiter(requests_per_minute=60)
         async with limiter:
@@ -22,26 +22,30 @@ class AsyncRateLimiter:
     """
 
     def __init__(self, requests_per_minute: int = 60):
-        self.rate = requests_per_minute / 60.0  # requests per second
-        self._tokens = float(requests_per_minute)
-        self._max_tokens = float(requests_per_minute)
+        # requests per second mein convert karo — internal rate
+        self.rate         = requests_per_minute / 60.0
+        self._tokens      = float(requests_per_minute)
+        self._max_tokens  = float(requests_per_minute)
         self._last_refill = time.monotonic()
-        self._lock = asyncio.Lock()
+        self._lock        = asyncio.Lock()
 
     def _refill(self):
-        now = time.monotonic()
-        elapsed = now - self._last_refill
-        self._tokens = min(self._max_tokens, self._tokens + elapsed * self.rate)
+        # elapsed time ke basis pe tokens add karo
+        # max_tokens se zyada nahi ho sakta
+        now            = time.monotonic()
+        elapsed        = now - self._last_refill
+        self._tokens   = min(self._max_tokens, self._tokens + elapsed * self.rate)
         self._last_refill = now
 
     async def acquire(self):
+        # ek token acquire karo — agar available nahi to wait karo
         while True:
             async with self._lock:
                 self._refill()
                 if self._tokens >= 1.0:
                     self._tokens -= 1.0
                     return
-            # Not enough tokens — wait a bit and retry
+            # tokens nahi hain — thoda ruko aur dobara check karo
             await asyncio.sleep(0.1)
 
     async def __aenter__(self):
@@ -49,4 +53,4 @@ class AsyncRateLimiter:
         return self
 
     async def __aexit__(self, *args):
-        pass
+        pass  # release karne ki zaroorat nahi — token bucket self-refilling hai

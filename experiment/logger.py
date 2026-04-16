@@ -1,22 +1,19 @@
-# experiment/logger.py
-# Handles logging setup and result persistence for experiment runs.
-# Saves results to JSON in experiments/ so we can diff runs over time.
-# Nothing fancy — just enough to not lose data between sessions.
+# experiment/logger.py — logging setup aur result persistence
+# results ko JSON mein save karta hai experiments/ mein taaki runs diff kar sakein
+# sessions ke beech data mat kho — yahi iska kaam hai
 
 import os
 import json
 import logging
 import datetime
 
-# All experiment outputs go here. Create it if it doesn't exist.
+# sab experiment outputs yahan jaate hain — directory banao agar nahi hai
 EXPERIMENTS_DIR = os.path.join(os.path.dirname(__file__), "..", "experiments")
 
 
 def setup_logging(level: str = "INFO", log_file: str = None):
-    """
-    Set up root logger. Call this once at the start of main.py.
-    Logs to stdout by default; pass log_file to also write to disk.
-    """
+    # root logger setup karo — main.py ke shuru mein ek baar call karo
+    # default mein stdout pe log karta hai; log_file doge to disk pe bhi likhega
     numeric_level = getattr(logging, level.upper(), logging.INFO)
 
     handlers = [logging.StreamHandler()]
@@ -31,7 +28,8 @@ def setup_logging(level: str = "INFO", log_file: str = None):
         datefmt="%H:%M:%S",
         handlers=handlers,
     )
-    logging.getLogger("httpx").setLevel(logging.WARNING)  # suppress openai http noise
+    # openai http noise suppress karo — bahut verbose hota hai
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("openai").setLevel(logging.WARNING)
 
     logging.info("Logging initialized.")
@@ -39,7 +37,7 @@ def setup_logging(level: str = "INFO", log_file: str = None):
 
 class ExperimentLogger:
     """
-    Tracks a single experiment run and saves results to disk.
+    Ek single experiment run track karta hai aur results disk pe save karta hai.
 
     Usage:
         exp = ExperimentLogger(name="jailbreak_gpt4o_mini")
@@ -48,36 +46,34 @@ class ExperimentLogger:
     """
 
     def __init__(self, name: str = "run"):
-        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.run_id = f"{name}_{ts}"
-        self.results: list[dict] = []
-        self.metadata: dict = {}
+        ts         = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.run_id   = f"{name}_{ts}"
+        self.results:  list[dict] = []
+        self.metadata: dict       = {}
         os.makedirs(EXPERIMENTS_DIR, exist_ok=True)
         print(f"[ExperimentLogger] Run ID: {self.run_id}")
 
     def set_metadata(self, **kwargs):
-        """Store run-level metadata (model name, config, etc.)."""
+        # run-level metadata store karo (model name, config, etc.)
         self.metadata.update(kwargs)
 
     def log_result(self, result: dict):
-        """Append a single result to the run log."""
+        # run log mein ek result add karo
         self.results.append(result)
 
     def log_results(self, results: list[dict]):
-        """Append a batch of results."""
+        # results ka batch add karo
         self.results.extend(results)
         print(f"[ExperimentLogger] Logged {len(results)} results. Total: {len(self.results)}")
 
     def save(self, summary: dict = None) -> str:
-        """
-        Write the full run to a JSON file.
-        Returns the output path.
-        """
+        # poora run JSON file mein likhо
+        # output path return karta hai
         output = {
-            "run_id": self.run_id,
+            "run_id":   self.run_id,
             "metadata": self.metadata,
-            "summary": summary or {},
-            "results": self.results,
+            "summary":  summary or {},
+            "results":  self.results,
         }
 
         filename = f"{self.run_id}.json"
@@ -90,11 +86,11 @@ class ExperimentLogger:
         return filepath
 
     def load(self, filepath: str) -> dict:
-        """Load a previous run from disk. Useful for post-hoc analysis."""
+        # disk se pehla run load karo — post-hoc analysis ke liye useful
         with open(filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        self.run_id = data.get("run_id", self.run_id)
-        self.results = data.get("results", [])
+        self.run_id   = data.get("run_id",   self.run_id)
+        self.results  = data.get("results",  [])
         self.metadata = data.get("metadata", {})
         print(f"[ExperimentLogger] Loaded run: {self.run_id} ({len(self.results)} results)")
         return data

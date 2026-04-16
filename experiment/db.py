@@ -1,8 +1,6 @@
-# experiment/db.py
-# SQLite persistence layer for experiment runs.
-# JSON files are fine for single runs, but once you have 50+ experiments
-# you want to query across them — hence the DB.
-# Schema is intentionally simple: runs + results, no ORM.
+# experiment/db.py — SQLite persistence layer for experiment runs
+# JSON files single runs ke liye theek hain, lekin 50+ experiments pe query karna padta hai
+# isliye DB. Schema simple rakha hai: runs + results, koi ORM nahi
 
 import sqlite3
 import json
@@ -10,20 +8,20 @@ import logging
 import os
 from datetime import datetime
 
-logger = logging.getLogger(__name__)
-
+logger     = logging.getLogger(__name__)
 DEFAULT_DB_PATH = "experiments/sentinel.db"
 
 
 def _connect(db_path: str) -> sqlite3.Connection:
+    # directory banao agar exist nahi karta, phir connect karo
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
     conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    conn.row_factory = sqlite3.Row   # dict-like access ke liye
     return conn
 
 
 def init_db(db_path: str = DEFAULT_DB_PATH):
-    """Create tables if they don't exist. Safe to call multiple times."""
+    # tables banao agar exist nahi karte — multiple times call karna safe hai
     conn = _connect(db_path)
     with conn:
         conn.executescript("""
@@ -55,7 +53,7 @@ def init_db(db_path: str = DEFAULT_DB_PATH):
                 FOREIGN KEY (run_id) REFERENCES runs(run_id)
             );
 
-            CREATE INDEX IF NOT EXISTS idx_results_run_id ON results(run_id);
+            CREATE INDEX IF NOT EXISTS idx_results_run_id  ON results(run_id);
             CREATE INDEX IF NOT EXISTS idx_results_category ON results(category);
             CREATE INDEX IF NOT EXISTS idx_results_is_unsafe ON results(is_unsafe);
         """)
@@ -65,7 +63,7 @@ def init_db(db_path: str = DEFAULT_DB_PATH):
 
 class ExperimentDB:
     """
-    Simple interface for storing and querying experiment data.
+    Experiment data store aur query karne ka simple interface.
 
     Usage:
         db = ExperimentDB("experiments/sentinel.db")
@@ -81,7 +79,7 @@ class ExperimentDB:
         return _connect(self.db_path)
 
     def save_run(self, run_id: str, metadata: dict, results: list[dict], summary: dict):
-        """Persist a complete experiment run."""
+        # complete experiment run persist karo — results individually insert honge
         conn = self._conn()
         try:
             with conn:
@@ -99,7 +97,7 @@ class ExperimentDB:
                     ),
                 )
                 for r in results:
-                    se = r.get("safety_eval", {})
+                    se = r.get("safety_eval",    {})
                     ae = r.get("alignment_eval", {})
                     conn.execute(
                         """INSERT INTO results
@@ -109,10 +107,10 @@ class ExperimentDB:
                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                         (
                             run_id,
-                            r.get("prompt", ""),
+                            r.get("prompt",   ""),
                             r.get("response", ""),
                             r.get("category", ""),
-                            r.get("severity", 0),
+                            r.get("severity",  0),
                             se.get("safety_score"),
                             int(se.get("is_unsafe", False)),
                             ae.get("helpfulness"),
@@ -128,7 +126,7 @@ class ExperimentDB:
         logger.info(f"Saved run {run_id} with {len(results)} results to DB.")
 
     def list_runs(self) -> list[dict]:
-        """Return all runs ordered by creation time."""
+        # creation time ke hisab se ordered sabhi runs return karo
         conn = self._conn()
         rows = conn.execute(
             "SELECT run_id, model, provider, created_at FROM runs ORDER BY created_at DESC"
@@ -138,12 +136,12 @@ class ExperimentDB:
 
     def get_summary(self, run_id: str) -> dict:
         conn = self._conn()
-        row = conn.execute("SELECT summary FROM runs WHERE run_id=?", (run_id,)).fetchone()
+        row  = conn.execute("SELECT summary FROM runs WHERE run_id=?", (run_id,)).fetchone()
         conn.close()
         return json.loads(row["summary"]) if row else {}
 
     def get_unsafe_results(self, run_id: str) -> list[dict]:
-        """Fetch results flagged as unsafe for a given run."""
+        # kisi run ke sabhi unsafe results fetch karo — review ke liye
         conn = self._conn()
         rows = conn.execute(
             "SELECT * FROM results WHERE run_id=? AND is_unsafe=1",
@@ -153,10 +151,10 @@ class ExperimentDB:
         return [dict(r) for r in rows]
 
     def compare_runs(self, run_id_a: str, run_id_b: str) -> dict:
-        """Quick stat comparison between two runs."""
+        # do runs ke beech quick stat comparison
         def stats(run_id):
             conn = self._conn()
-            row = conn.execute(
+            row  = conn.execute(
                 """SELECT COUNT(*) total,
                           SUM(is_unsafe) unsafe,
                           AVG(safety_score) avg_safety,
