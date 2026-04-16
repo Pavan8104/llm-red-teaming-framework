@@ -1,13 +1,13 @@
 # results_store.py — file-based storage for experiment runs
+# v2: improved JSON structure, CSV export, run comparison
 # each run gets its own timestamped JSON file under experiments/
-# load_results and list_runs let you do post-hoc analysis
 
 import json
 import os
+import csv
 import glob
 from datetime import datetime
 
-# optional — only import config if available (avoids circular import in tests)
 try:
     import config as _config
     _HAS_CONFIG = True
@@ -30,19 +30,30 @@ def save_results(results: list, run_name: str = "run") -> str:
     unsafe = sum(1 for r in results if r.get("safety_eval", {}).get("is_unsafe"))
     scores = [r.get("safety_eval", {}).get("safety_score", 0) for r in results]
     avg_score = round(sum(scores) / len(scores), 3) if scores else 0.0
+    truth_scores = [
+        r.get("alignment_eval", {}).get("truthfulness", 0) for r in results
+    ]
+    avg_truth = round(sum(truth_scores) / len(truth_scores), 3) if truth_scores else 0.0
+    help_scores = [
+        r.get("alignment_eval", {}).get("helpfulness", 0) for r in results
+    ]
+    avg_help = round(sum(help_scores) / len(help_scores), 3) if help_scores else 0.0
 
-    # embed a config snapshot so we know exactly what settings produced this run
     config_snapshot = _config.as_dict() if _HAS_CONFIG else {}
 
     payload = {
         "run_id": f"{run_name}_{timestamp}",
         "timestamp": timestamp,
+        "created_at": datetime.now().isoformat(),
         "config": config_snapshot,
         "summary": {
             "total": total,
             "unsafe_count": unsafe,
             "pct_unsafe": round(unsafe / total * 100, 1) if total else 0,
             "avg_safety_score": avg_score,
+            "avg_truthfulness": avg_truth,
+            "avg_helpfulness": avg_help,
+            "safe_count": total - unsafe,
         },
         "results": results,
     }
@@ -50,7 +61,7 @@ def save_results(results: list, run_name: str = "run") -> str:
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, default=str)
 
-    print(f"[Storage] Saved {total} results → {filepath}")
+    print(f"[Storage] ✓ Saved {total} results → {filepath}")
     return filepath
 
 
@@ -60,10 +71,10 @@ def load_results(filepath: str) -> dict:
         return json.load(f)
 
 
-def list_runs(directory: str = None) -> list[dict]:
+def list_runs(directory: str = None) -> list:
     """
     list all run JSON files in the results directory
-    returns list sorted by newest first
+    sorted by newest first
     """
     directory = directory or RESULTS_DIR
     pattern = os.path.join(directory, "*.json")
@@ -89,15 +100,60 @@ def list_runs(directory: str = None) -> list[dict]:
 def export_unsafe(results: list, run_name: str = "unsafe_only") -> str:
     """
     save only the unsafe-flagged results to a separate file
-    useful for manual review without wading through all the safe responses
+    useful for manual review
     """
     unsafe = [r for r in results if r.get("safety_eval", {}).get("is_unsafe")]
     if not unsafe:
         print("[Storage] No unsafe results to export.")
         return ""
     path = save_results(unsafe, run_name=run_name)
-    print(f"[Storage] Exported {len(unsafe)} unsafe result(s) → {path}")
+    print(f"[Storage] ⚠ Exported {len(unsafe)} unsafe result(s) → {path}")
     return path
+
+
+def export_csv(results: list, filepath: str = None) -> str:
+    """
+    export results to CSV for analysis in Excel/pandas
+    includes the key scalar scores — nested dicts are flattened
+    """
+    if not results:
+        print("[Storage] Nothing to export.")
+        return ""
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filepath = filepath or os.path.join(RESULTS_DIR, f"export_{timestamp}.csv")
+
+    rows = []
+    for r in results:
+        se = r.get("safety_eval", {})
+        ae = r.get("alignment_eval", {})
+        de = r.get("defense_eval", {})
+        rows.append({
+            "id": r.get("id"),
+            "type": r.get("type"),
+            "severity": r.get("severity"),
+            "generated": r.get("generated", False),
+            "prompt_preview": r.get("prompt", "")[:80],
+            "response_preview": (r.get("response") or "")[:80],
+            "is_unsafe": se.get("is_unsafe"),
+            "safety_score": se.get("safety_score"),
+            "refusal_count": se.get("refusal_count"),
+            "helpfulness": ae.get("helpfulness"),
+            "trustworthiness": ae.get("trustworthiness"),
+            "truthfulness": ae.get("truthfulness"),
+            "composite_score": ae.get("composite"),
+            "defense_flagged": de.get("filtered"),
+            "latency_s": r.get("latency_s"),
+        })
+
+    fieldnames = list(rows[0].keys()) if rows else []
+    with open(filepath, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"[Storage] CSV exported → {filepath} ({len(rows)} rows)")
+    return filepath
 
 
 def delete_run(filepath: str) -> bool:
@@ -114,34 +170,64 @@ def delete_run(filepath: str) -> bool:
 
 
 def get_worst_results(results: list, n: int = 5) -> list:
-    """
-    return the n results with the lowest safety score
-    useful for prioritising what to review first
-    """
+    """return the n results with lowest safety score — worst-first ordering"""
     scored = [r for r in results if r.get("safety_eval")]
-    sorted_results = sorted(
-        scored,
-        key=lambda r: r["safety_eval"].get("safety_score", 1.0)
-    )
-    return sorted_results[:n]
+    return sorted(
+        scored, key=lambda r: r["safety_eval"].get("safety_score", 1.0)
+    )[:n]
+
+
+def compare_runs(filepath1: str, filepath2: str) -> dict:
+    """
+    quick comparison between two saved runs
+    useful for before/after testing when you change the prompt library or model
+    """
+    r1 = load_results(filepath1)
+    r2 = load_results(filepath2)
+    s1 = r1.get("summary", {})
+    s2 = r2.get("summary", {})
+
+    def delta(key):
+        v1 = s1.get(key, 0)
+        v2 = s2.get(key, 0)
+        return round(v2 - v1, 4)
+
+    print(f"\n--- Run Comparison ---")
+    print(f"  Run A: {r1.get('run_id')}")
+    print(f"  Run B: {r2.get('run_id')}")
+    print(f"  Δ pct_unsafe        : {delta('pct_unsafe'):+.1f}%")
+    print(f"  Δ avg_safety_score  : {delta('avg_safety_score'):+.4f}")
+    print(f"  Δ avg_truthfulness  : {delta('avg_truthfulness'):+.4f}")
+    print(f"  Δ avg_helpfulness   : {delta('avg_helpfulness'):+.4f}")
+    print("----------------------\n")
+
+    return {
+        "run_a": r1.get("run_id"),
+        "run_b": r2.get("run_id"),
+        "delta_pct_unsafe": delta("pct_unsafe"),
+        "delta_avg_safety": delta("avg_safety_score"),
+        "delta_avg_truth": delta("avg_truthfulness"),
+        "delta_avg_help": delta("avg_helpfulness"),
+    }
 
 
 def print_run_history():
-    """quick summary of all saved runs — useful for comparing experiments"""
+    """quick summary of all saved runs — useful for comparing experiments at a glance"""
     runs = list_runs()
     if not runs:
         print("[Storage] No saved runs found.")
         return
 
-    print(f"\n{'—'*60}")
-    print(f"  {'Run ID':<35} {'Unsafe%':>8}  {'AvgSafety':>10}  {'Total':>6}")
-    print(f"{'—'*60}")
+    print(f"\n{'—'*72}")
+    print(f"  {'Run ID':<35} {'Unsafe%':>8}  {'AvgSafe':>8}  {'AvgTruth':>9}  {'Total':>6}")
+    print(f"{'—'*72}")
     for r in runs:
         s = r["summary"]
         print(
             f"  {r['run_id']:<35} "
             f"{s.get('pct_unsafe', 0):>7.1f}%  "
-            f"{s.get('avg_safety_score', 0):>10.3f}  "
+            f"{s.get('avg_safety_score', 0):>8.3f}  "
+            f"{s.get('avg_truthfulness', 0):>9.3f}  "
             f"{s.get('total', 0):>6}"
         )
-    print(f"{'—'*60}\n")
+    print(f"{'—'*72}\n")

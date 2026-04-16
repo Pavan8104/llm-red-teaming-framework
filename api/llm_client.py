@@ -1,6 +1,6 @@
 # llm_client.py — openai api wrapper
 # handles retries, rate limits, and basic error categorization
-# system prompt is configurable — default is the HHH baseline
+# v2: better error messages, token count logging, context length handling
 
 import os
 import time
@@ -9,10 +9,12 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-# lazy-init the client — avoids import-time errors if key isn't set yet
 _client = None
 
-DEFAULT_SYSTEM_PROMPT = "You are a helpful, harmless, and honest AI assistant."
+DEFAULT_SYSTEM_PROMPT = (
+    "You are a helpful, harmless, and honest AI assistant. "
+    "Always be truthful and acknowledge when you are uncertain."
+)
 
 
 def _get_client():
@@ -20,7 +22,9 @@ def _get_client():
     if _client is None:
         key = os.getenv("OPENAI_API_KEY", "")
         if not key:
-            raise RuntimeError("OPENAI_API_KEY is not set")
+            raise RuntimeError(
+                "OPENAI_API_KEY is not set. Run: export OPENAI_API_KEY=sk-..."
+            )
         _client = OpenAI(api_key=key)
     return _client
 
@@ -28,7 +32,7 @@ def _get_client():
 def ping(model: str = "gpt-4o-mini") -> bool:
     """
     send a trivial request to verify the api key works before a full run
-    returns True if the key is valid, False otherwise
+    faster to fail here than halfway through a 20-prompt batch
     """
     try:
         resp = _get_client().chat.completions.create(
@@ -36,10 +40,10 @@ def ping(model: str = "gpt-4o-mini") -> bool:
             messages=[{"role": "user", "content": "ping"}],
             max_tokens=5,
         )
-        print(f"[LLM] API key valid — model={resp.model}")
+        print(f"[LLM] ✓ API key valid — model={resp.model}")
         return True
     except Exception as e:
-        print(f"[LLM] API ping failed: {e}")
+        print(f"[LLM] ✗ API ping failed: {type(e).__name__}: {e}")
         return False
 
 
@@ -54,7 +58,8 @@ def send_prompt(
     send one prompt and return response text, or None on failure
     retries up to 3x with exponential backoff on rate limits
     """
-    print(f"\n[LLM] → {model} | {len(prompt_text)} chars")
+    char_count = len(prompt_text)
+    print(f"\n[LLM] → sending to {model} | {char_count} chars")
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -72,7 +77,8 @@ def send_prompt(
             )
             elapsed = round(time.time() - t0, 2)
             text = resp.choices[0].message.content
-            print(f"[LLM] ← {elapsed}s | {len(text)} chars | model={resp.model}")
+            tokens_used = getattr(resp.usage, "total_tokens", "?")
+            print(f"[LLM] ← {elapsed}s | {len(text)} chars | {tokens_used} tokens | model={resp.model}")
             logger.debug(f"Response snippet: {text[:120]!r}")
             return text
 
@@ -80,18 +86,22 @@ def send_prompt(
             err_str = str(e)
             if "rate_limit" in err_str.lower() or "429" in err_str:
                 wait = 2 ** attempt
-                print(f"[LLM] Rate limited — waiting {wait}s (attempt {attempt + 1})")
+                print(f"[LLM] Rate limited — sleeping {wait}s (attempt {attempt + 1}/3)")
                 time.sleep(wait)
             elif "invalid_api_key" in err_str.lower() or "401" in err_str:
-                print(f"[LLM] Auth error — check your OPENAI_API_KEY")
+                print(f"[LLM] ✗ Auth error — check OPENAI_API_KEY")
                 return None
             elif "content_policy" in err_str.lower():
                 print(f"[LLM] Content policy refusal at API level")
                 return "[API_REFUSED]"
+            elif "context_length" in err_str.lower() or "413" in err_str:
+                print(f"[LLM] Prompt too long ({char_count} chars) — try shorter input")
+                return None
             else:
-                print(f"[LLM] Error attempt {attempt + 1}: {e}")
+                print(f"[LLM] Error attempt {attempt + 1}/3: {type(e).__name__}: {e}")
                 if attempt == 2:
                     return None
                 time.sleep(1)
 
+    print(f"[LLM] All 3 attempts failed — giving up on this prompt")
     return None
