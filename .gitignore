@@ -1,0 +1,93 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Secrets / API keys
+.env.local
+.env.*.local
+secrets.yaml
+secrets.json
+
+# Experiment outputs (keep structure, ignore data)
+experiments/*.json
+experiments/*.log
+experiments/*.csv
+!experiments/.gitkeep
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# Coverage / testing
+.coverage
+.tox/
+.pytest_cache/
+htmlcov/
+*.cover
+
+# Distribution
+*.manifest
+*.spec
+
+# SQLite databases
+*.db
+*.sqlite3
+
+# Reports
+reports/*.html
+reports/*.pdf
+!reports/.gitkeep
+
+# Logs
+*.log
+logs/
+
+# Type stubs
+*.pyi
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
