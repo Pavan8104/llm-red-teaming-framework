@@ -1,7 +1,3 @@
-# api_server/fast_server.py — FastAPI backend for the React frontend
-# safety pipeline ko REST endpoints ke through expose karta hai
-# React app is se /api/evaluate pe POST request karta hai
-
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -10,19 +6,21 @@ from typing import Optional
 import sys
 import os
 
-# project root add karo taaki sibling modules import ho sakein
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from evaluation.scorer import score_response
-from evaluation.alignment_scorer import score_alignment
-from evaluation.truthfulness_scorer import explain_truthfulness
+from evaluation.alignment_scorer import calculate_alignment
+from evaluation.truthfulness_scorer import fetch_truthfulness_report
 from defense.basic_filter import filter_response
 from attacks.prompt_attacks import ATTACK_PROMPTS
 from attacks.prompt_generator import generate_batch
 
-app = FastAPI(title="Sentinel AI Engine API")
+# Core API instantiation
+# FastAPI ka main server hook yahan create hota hai
+app = FastAPI(title="Sentinel AI Protocol API")
 
-# CORS khol do — React dev server alag port pe hota hai
+# Frontend integration ke liye strictly CORS ko open rakha gaya hai
+# CORS routing allowed strictly for React UI Dashboard networking
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -33,74 +31,104 @@ app.add_middleware(
 
 
 class EvaluateRequest(BaseModel):
-    prompt:   str
+    """
+    Strict typing check request body schema ke liye. 
+    Maintains strong type checking JSON constraints.
+    """
+    prompt: str
     response: str
 
 
 @app.get("/api/health")
-def health_check():
-    # simple liveness check — load balancer ya frontend se use karo
-    return {"status": "ok"}
+async def health_check():
+    """
+    Route for Kubernetes checks / external monitoring.
+    """
+    return {"status": "ok", "system": "Sentinel Async API is active!"}
 
 
 @app.post("/api/evaluate")
-def evaluate_interaction(req: EvaluateRequest):
-    # prompt aur response dono score karo independently
-    # worst-case wins: dono mein se koi bhi unsafe ho to final verdict UNSAFE hoga
+async def evaluate_interaction(req: EvaluateRequest):
+    """
+    ASYNC Execution Engine! Puri process bina API freeze kiye await karti hai.
+    ASYNC processing core! Handshakes Moderation API and grading logic strictly without blocking threads.
+    """
     try:
-        prompt_safety   = score_response(req.prompt,   source="prompt")
-        response_safety = score_response(req.response, source="response")
+        # Prompt injection module ko filter checking bhejte hain pehle
+        # Pre-check the Prompt Injection grids actively early to block heavy tasks if malicious!
+        prompt_defense_check = filter_response(req.prompt, block_mode=False)
+        if prompt_defense_check["severity"] >= 4:
+            raise HTTPException(
+                status_code=400, 
+                detail="Prompt Injection attempt blocked securely."
+            )
 
-        is_unsafe    = prompt_safety["is_unsafe"] or response_safety["is_unsafe"]
-        safety_score = min(prompt_safety["safety_score"], response_safety["safety_score"])
+        # ── Asynchronously fire off Prompt and Response Evaluation Scoring ──
+        prompt_safety_eval = await score_response(req.prompt, source="prompt")
+        response_safety_eval = await score_response(req.response, source="response")
 
-        # combined safety result banao frontend ke liye
-        # agar prompt ne override kiya aur response safe tha to prompt ka reason dikhao
-        if prompt_safety["is_unsafe"] and not response_safety["is_unsafe"]:
-            primary_safety = prompt_safety
+        # ── Worst-case scenario logic — Result = UNSAFE if ANY element fails ──
+        final_is_unsafe = prompt_safety_eval["is_unsafe"] or response_safety_eval["is_unsafe"]
+        final_safety_metric = min(prompt_safety_eval["safety_score"], response_safety_eval["safety_score"])
+
+        # Decide primary reporting dictionary for UI display metrics
+        # Decide which specific analysis matrix should dictate the frontend error display
+        if prompt_safety_eval["is_unsafe"] and not response_safety_eval["is_unsafe"]:
+            active_safety_dict = prompt_safety_eval
         else:
-            primary_safety = response_safety
+            active_safety_dict = response_safety_eval
 
-        safety_result = {
-            **primary_safety,
-            # combined worst-case values hamesha reflect karo
-            "is_unsafe":       is_unsafe,
-            "safety_score":    safety_score,
-            # transparency ke liye dono individual verdicts include karo
-            "prompt_safety":   prompt_safety,
-            "response_safety": response_safety,
+        combined_safety_payload = {
+            **active_safety_dict,
+            "is_unsafe":    final_is_unsafe,
+            "safety_score": final_safety_metric,
+            "prompt_safety":   prompt_safety_eval,
+            "response_safety": response_safety_eval,
         }
 
-        alignment_result = score_alignment(req.response, safety_score=safety_score)
-        truth_result     = explain_truthfulness(req.response)
-        defense_result   = filter_response(req.response, block_mode=False)
+        # Baaki dimensions synchronously evaluate hote hain kyunki yeh sirf regex array maps hain!
+        # Remaining charts execute instantly because they lack network overheads
+        alignment_report = calculate_alignment(req.response, provided_safety=final_safety_metric)
+        truth_report = fetch_truthfulness_report(req.response)
+        defense_report = filter_response(req.response, block_mode=False)
 
         return {
-            "prompt":       req.prompt,
-            "response":     req.response,
-            "safety":       safety_result,
-            "alignment":    alignment_result,
-            "truthfulness": truth_result,
-            "defense":      defense_result,
-            "is_unsafe":    is_unsafe,
-            "safety_score": safety_score,
+            "prompt":      req.prompt,
+            "response":    req.response,
+            "safety":      combined_safety_payload,
+            "alignment":   alignment_report,
+            "truthfulness": truth_report,
+            "defense":     defense_report,
+            "is_unsafe":   final_is_unsafe,
+            "safety_score": final_safety_metric,
         }
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException as http_exception:
+        # Expected business logic blocks throw neatly
+        # Throw predefined secure codes up gracefully
+        raise http_exception
+    except Exception as runtime_error:
+        # Fallback system crash log
+        # Global crash reporting mapping
+        print(f"[API Freeze] Endpoint evaluate failed: {str(runtime_error)}")
+        raise HTTPException(status_code=500, detail=str(runtime_error))
 
 
 @app.get("/api/prompts/library")
-def get_prompt_library():
-    # poori attack library return karo — frontend mein browse ke liye
+async def get_prompt_library():
+    """
+    Frontend gallery ko prompts bhejne ke liye list data supply karta hai.
+    """
     return {"prompts": ATTACK_PROMPTS}
 
 
 @app.get("/api/prompts/generate")
-def generate_prompts(n: int = 5, attack_type: Optional[str] = None):
-    # dynamic prompts generate karo — frontend generator tab ke liye
+async def generate_prompts(n: int = 5, attack_type: Optional[str] = None):
+    """
+    Synchronous generation call to the mutator files internally.
+    """
     try:
-        prompts = generate_batch(n=n, attack_type=attack_type)
-        return {"prompts": prompts}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        crafted_prompts = generate_batch(n=n, attack_type=attack_type)
+        return {"prompts": crafted_prompts}
+    except Exception as processing_error:
+        raise HTTPException(status_code=500, detail=str(processing_error))
