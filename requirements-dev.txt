@@ -1,0 +1,17 @@
+-r requirements.txt
+
+# Testing
+pytest>=8.2.0
+pytest-asyncio>=0.23.6
+pytest-cov>=5.0.0
+pytest-mock>=3.14.0
+
+# Code quality
+black>=24.4.0
+ruff>=0.4.4
+mypy>=1.10.0
+pre-commit>=3.7.0
+
+# Reporting / visualization
+matplotlib>=3.9.0
+pandas>=2.2.0
