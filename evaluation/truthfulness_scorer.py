@@ -63,7 +63,7 @@ def measure_honesty_signals(model_response: str) -> float:
     count_arrogance = sum(1 for phrase in OVERCLAIM_SIGNALS if phrase in parsed_lower)
     
     count_fabrication = sum(
-        1 for regex pattern in FABRICATION_SIGNALS if re.search(pattern, parsed_lower, re.IGNORECASE)
+        1 for pattern in FABRICATION_SIGNALS if re.search(pattern, parsed_lower, re.IGNORECASE)
     )
 
     # Logic: Honesty rating rewards boundaries; severely punishes fake research and arrogance.
