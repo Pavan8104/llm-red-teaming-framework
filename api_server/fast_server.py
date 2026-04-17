@@ -21,9 +21,11 @@ app = FastAPI(title="Sentinel AI Protocol API")
 
 # Frontend integration ke liye strictly CORS ko open rakha gaya hai
 # CORS routing allowed strictly for React UI Dashboard networking
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
