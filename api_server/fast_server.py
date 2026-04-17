@@ -1,4 +1,6 @@
+import json
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
@@ -14,6 +16,7 @@ from evaluation.truthfulness_scorer import fetch_truthfulness_report
 from defense.basic_filter import filter_response
 from attacks.prompt_attacks import ATTACK_PROMPTS
 from attacks.prompt_generator import generate_batch
+from attacks.gladiator import run_gladiator_battle
 
 # Core API instantiation
 # FastAPI ka main server hook yahan create hota hai
@@ -134,3 +137,19 @@ async def generate_prompts(n: int = 5, attack_type: Optional[str] = None):
         return {"prompts": crafted_prompts}
     except Exception as processing_error:
         raise HTTPException(status_code=500, detail=str(processing_error))
+
+@app.get("/api/gladiator/battle")
+async def start_gladiator_battle(objective: str, target_model: str = "gpt-4o-mini", max_turns: int = 5):
+    """
+    Starts an AI vs AI gladiator battle and streams the events via Server-Sent Events (SSE).
+    """
+    async def event_generator():
+        try:
+            async for event in run_gladiator_battle(objective, target_model=target_model, max_turns=max_turns):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as e:
+            error_event = {"status": "error", "message": str(e)}
+            yield f"data: {json.dumps(error_event)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
